@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CC Switch API Tester</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+/* Header */
+.header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #2a2a4a; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.header h1 { font-size: 24px; color: #fff; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* Buttons */
+.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn-primary { background: #4361ee; color: #fff; }
+.btn-primary:hover { background: #3a56d4; }
+.btn-success { background: #00d68f; color: #1a1a2e; }
+.btn-success:hover { background: #00c07f; }
+.btn-warning { background: #ffaa00; color: #1a1a2e; }
+.btn-warning:hover { background: #e69900; }
+.btn-danger { background: #ff3d71; color: #fff; }
+.btn-danger:hover { background: #e63565; }
+.btn-secondary { background: #2a2a4a; color: #e0e0e0; }
+.btn-secondary:hover { background: #3a3a5a; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* Progress */
+.progress-bar { display: none; align-items: center; gap: 10px; padding: 10px 16px; background: #2a2a4a; border-radius: 8px; margin-bottom: 16px; }
+.progress-bar.active { display: flex; }
+.progress-track { flex: 1; height: 8px; background: #1a1a2e; border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #4361ee, #00d68f); border-radius: 4px; transition: width 0.3s; }
+.progress-text { font-size: 13px; color: #aaa; white-space: nowrap; }
+
+/* Stats Cards */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: #16213e; border-radius: 10px; padding: 20px; text-align: center; border: 1px solid #2a2a4a; }
+.stat-card .label { font-size: 13px; color: #888; margin-bottom: 8px; }
+.stat-card .value { font-size: 28px; font-weight: 700; }
+.stat-card .value.green { color: #00d68f; }
+.stat-card .value.red { color: #ff3d71; }
+.stat-card .value.yellow { color: #ffaa00; }
+.stat-card .value.blue { color: #4361ee; }
+
+/* Tables */
+.vendor-section { background: #16213e; border-radius: 10px; border: 1px solid #2a2a4a; margin-bottom: 24px; overflow: hidden; }
+.table-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #2a2a4a; }
+.table-header h2 { font-size: 16px; color: #fff; }
+.table-container { overflow: auto; max-height: 70vh; }
+table { min-width: 100%; border-collapse: separate; border-spacing: 0; }
+thead th { position: sticky; top: 0; background: #16213e; z-index: 3; }
+th { padding: 12px 16px; text-align: left; font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2a2a4a; cursor: pointer; user-select: none; white-space: nowrap; }
+th:hover { color: #fff; }
+th.sorted { color: #4361ee; }
+td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #1a1a2e; }
+tbody tr:hover { background: #1a2540; }
+/* 固定首列（复选框 + 名称）：sticky 左侧 */
+.col-sticky-left { position: sticky; left: 0; background: #16213e; z-index: 2; }
+thead .col-sticky-left { z-index: 4; }
+tbody tr:hover .col-sticky-left { background: #1a2540; }
+/* 固定右侧两列：状态列（right: 150px）+ 操作列（right: 0） */
+.col-sticky-action { position: sticky; right: 0; background: #16213e; z-index: 2; box-shadow: -2px 0 4px rgba(0,0,0,0.2); }
+.col-sticky-status { position: sticky; right: 150px; background: #16213e; z-index: 2; }
+thead .col-sticky-action { z-index: 4; }
+thead .col-sticky-status { z-index: 4; }
+tbody tr:hover .col-sticky-action { background: #1a2540; }
+tbody tr:hover .col-sticky-status { background: #1a2540; }
+tr:last-child td { border-bottom: none; }
+
+/* Status badges */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.badge-success { background: rgba(0,214,143,0.15); color: #00d68f; }
+.badge-warning { background: rgba(255,170,0,0.15); color: #ffaa00; }
+.badge-error { background: rgba(255,61,113,0.15); color: #ff3d71; }
+.badge-testing { background: rgba(67,97,238,0.15); color: #4361ee; }
+
+/* Latency colors */
+.latency-fast { color: #00d68f; }
+.latency-medium { color: #ffaa00; }
+.latency-slow { color: #ff3d71; }
+
+/* Checkbox */
+.checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: #4361ee; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: #16213e; border-radius: 12px; padding: 24px; width: 500px; max-width: 90vw; border: 1px solid #2a2a4a; }
+.modal h3 { margin-bottom: 20px; color: #fff; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; color: #888; margin-bottom: 6px; }
+.form-group input, .form-group select { width: 100%; padding: 10px 12px; background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 6px; color: #e0e0e0; font-size: 14px; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #4361ee; }
+.form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+/* Error detail */
+.error-text { font-size: 12px; color: #ff3d71; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.error-text:hover { white-space: normal; overflow: visible; }
+
+/* Group filter */
+.group-filter { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; background: #16213e; border-radius: 8px; border: 1px solid #2a2a4a; }
+.group-btn { padding: 6px 14px; border: 1px solid #2a2a4a; background: #1a1a2e; color: #e0e0e0; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.group-btn:hover { background: #2a2a4a; border-color: #4361ee; }
+.group-btn.active { background: #4361ee; color: #fff; border-color: #4361ee; }
+.group-btn .count { background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 10px; font-size: 11px; }
+.group-btn.active .count { background: rgba(255,255,255,0.3); }
+
+/* Detail modal content */
+.detail-section { margin-bottom: 16px; }
+.detail-section h4 { color: #4361ee; font-size: 13px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.detail-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.detail-stat { background: #1a1a2e; padding: 10px 12px; border-radius: 6px; border: 1px solid #2a2a4a; }
+.detail-stat .k { font-size: 11px; color: #888; margin-bottom: 4px; }
+.detail-stat .v { font-size: 16px; font-weight: 600; color: #e0e0e0; }
+.detail-attempts { width: 100%; border-collapse: collapse; }
+.detail-attempts th { background: #1a1a2e; padding: 8px; text-align: left; font-size: 12px; color: #888; }
+.detail-attempts td { padding: 8px; font-size: 13px; border-top: 1px solid #2a2a4a; }
+.detail-error { background: rgba(255,61,113,0.1); border: 1px solid rgba(255,61,113,0.3); border-radius: 6px; padding: 8px 10px; font-size: 12px; color: #ff3d71; margin-top: 6px; word-break: break-all; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 60px 20px; color: #666; }
+.empty-state p { font-size: 16px; margin-bottom: 16px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header { flex-direction: column; align-items: flex-start; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  table { font-size: 12px; }
+  th, td { padding: 8px 10px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>CC Switch API 测试器(API Tester)</h1>
+    <div class="toolbar">
+      <button class="btn btn-secondary" onclick="reloadConfig()">重载(Reload)</button>
+      <button class="btn btn-secondary" onclick="showDbModal()">选择数据库(Select DB)</button>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#888">
+        并发(Concurrency)
+        <input type="number" id="concurrencyInput" value="10" min="1" max="100" style="width:60px;padding:4px;background:#1a1a2e;border:1px solid #2a2a4a;border-radius:4px;color:#e0e0e0" onchange="updateConcurrency(this.value)">
+      </label>
+      <button class="btn btn-primary" onclick="testAll()" id="btnTestAll">测试全部(Test All)</button>
+      <button class="btn btn-success" onclick="testSelected()" id="btnTestSelected" style="display:none">测试选中(Test Selected)</button>
+      <button class="btn btn-warning" onclick="showCustomModal()">自定义测试(Custom)</button>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-bar" id="progressBar">
+    <span class="progress-text" id="progressText">正在测试(Testing)...</span>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Group Filter -->
+  <div class="group-filter" id="groupFilter" style="display:none;margin-bottom:16px;"></div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">供应商总数(Total)</div>
+      <div class="value blue" id="statTotal">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">已测(Tested)</div>
+      <div class="value green" id="statTested">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">失败(Failed)</div>
+      <div class="value red" id="statFailed">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">平均TTFB(Avg TTFB)</div>
+      <div class="value yellow" id="statTtfb">-</div>
+    </div>
+  </div>
+
+  <!-- Vendor List -->
+  <div class="vendor-section">
+    <div class="table-header">
+      <h2>供应商列表(Vendors)</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:13px;color:#888;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" class="checkbox" id="selectAll" onchange="toggleSelectAll()"> 全选(Select All)
+        </label>
+      </div>
+    </div>
+    <div class="table-container">
+    <table id="vendorTable">
+      <thead>
+        <tr>
+          <th class="col-sticky-left" style="width:40px"></th>
+          <th class="col-sticky-left" onclick="sortTable('name')">名称(NAME)</th>
+          <th onclick="sortTable('group')">分组(GROUP)</th>
+          <th onclick="sortTable('endpoint')">端点(ENDPOINT)</th>
+          <th onclick="sortTable('model')">模型(MODEL)</th>
+          <th onclick="sortTable('format')">格式(FORMAT)</th>
+          <th onclick="sortTable('ttfb')" class="sorted">首字节时间(TTFB avg)</th>
+          <th onclick="sortTable('ttfb_min')">最小TTFB(TTFB min)</th>
+          <th onclick="sortTable('ttfb_max')">最大TTFB(TTFB max)</th>
+          <th onclick="sortTable('total')">总耗时(Total avg)</th>
+          <th onclick="sortTable('total_min')">最小总耗时(Total min)</th>
+          <th onclick="sortTable('total_max')">最大总耗时(Total max)</th>
+          <th class="col-sticky-status">状态(STATUS)</th>
+          <th class="col-sticky-action">操作(ACTION)</th>
+        </tr>
+      </thead>
+      <tbody id="vendorBody"></tbody>
+    </table>
+    </div>
+    <div class="empty-state" id="emptyState">
+      <p>暂无供应商(No vendors loaded)</p>
+      <button class="btn btn-primary" onclick="reloadConfig()">加载(Load)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Test Modal -->
+<div class="modal-overlay" id="customModal">
+  <div class="modal">
+    <h3>自定义测试(Custom Test)</h3>
+    <div class="form-group">
+      <label>端点地址(Endpoint URL)</label>
+      <input type="text" id="customEndpoint" placeholder="https://api.example.com">
+    </div>
+    <div class="form-group">
+      <label>API 密钥(API Key)</label>
+      <input type="text" id="customApiKey" placeholder="sk-...">
+    </div>
+    <div class="form-group">
+      <label>模型(Model)</label>
+      <input type="text" id="customModel" placeholder="gpt-4o-mini">
+    </div>
+    <div class="form-group">
+      <label>API 格式(API Format)</label>
+      <select id="customFormat">
+        <option value="openai_chat">OpenAI Chat Completions</option>
+        <option value="anthropic">Anthropic Messages</option>
+        <option value="openai_responses">OpenAI Responses</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>重复次数(Repeat)</label>
+      <input type="number" id="customRepeat" value="3" min="1" max="10">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="hideCustomModal()">取消(Cancel)</button>
+      <button class="btn btn-primary" onclick="runCustomTest()">测试(Test)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="width:720px;max-width:95vw">
+    <h3 id="detailTitle">测试详情(Test Details)</h3>
+    <div id="detailContent" style="max-height:60vh;overflow:auto"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="hideDetailModal()">关闭(Close)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Select Database Modal -->
+<div class="modal-overlay" id="dbModal">
+  <div class="modal">
+    <h3>选择数据库(Select Database)</h3>
+    <div class="form-group">
+      <label>数据库文件路径(Database File Path)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="dbPathInput" placeholder="C:\Users\xxx\.cc-switch\cc-switch.db" style="flex:1">
+        <label class="btn btn-secondary" style="margin:0;cursor:pointer;position:relative;overflow:hidden">
+          浏览(Browse)
+          <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3" style="position:absolute;right:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer" onchange="onDbFileSelected(this)">
+        </label>
+      </div>
+      <div style="font-size:11px;color:#888;margin-top:6px">
+        浏览器安全限制：无法自动获取所选文件的完整路径，请检查自动填入的路径是否正确（某些浏览器只提供文件名）。
+      </div>
+    </div>
+    <div class="form-group">
+      <label>当前数据库(Current DB)</label>
+      <div id="currentDbPath" style="font-size:12px;color:#aaa;background:#1a1a2e;padding:8px;border-radius:6px;word-break:break-all">-</div>
+    </div>
+    <div id="dbMessage" style="font-size:12px;margin:8px 0;min-height:16px"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="hideDbModal()">取消(Cancel)</button>
+      <button class="btn btn-primary" onclick="uploadDb()">上传(Upload)</button>
+      <button class="btn btn-primary" onclick="loadDbFromInput()">加载(Load)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let vendors = [];
+let results = {};
+let sortField = 'ttfb';
+let sortAsc = true;
+let ws = null;
+let testing = false;
+let currentGroup = 'all'; // 当前筛选的分组
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    loadVendors();
+    loadSettings();
+    connectWs();
+
+    // 事件委托：表格内的按钮点击（避免 id 含特殊字符时 onclick 失效）
+    document.getElementById('vendorBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const vid = btn.dataset.vid;
+      if (!vid) return;
+      if (btn.classList.contains('act-test')) {
+        testSingle(vid);
+      } else if (btn.classList.contains('act-detail')) {
+        showDetail(vid);
+      }
+    });
+  });
+
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'progress') {
+      showProgress(msg.current, msg.total, msg.vendor);
+    } else if (msg.type === 'result') {
+      results[msg.vendor_id] = msg.result;
+      renderTable();
+      updateStats();
+    } else if (msg.type === 'complete') {
+      // 结果通过轮询获取，这里无需处理
+    }
+  };
+  ws.onclose = () => {
+    setTimeout(connectWs, 3000);
+  };
+}
+
+async function loadVendors() {
+  try {
+    const res = await fetch('/api/vendors');
+    vendors = await res.json();
+    renderGroupFilter();
+    renderTable();
+    updateStats();
+    document.getElementById('emptyState').style.display = vendors.length ? 'none' : 'block';
+  } catch (e) {
+    console.error('Failed to load vendors:', e);
+  }
+}
+
+// 计算分组列表
+function getGroups() {
+  const map = {};
+  vendors.forEach(v => {
+    const g = v.group || 'other';
+    map[g] = (map[g] || 0) + 1;
+  });
+  // 把 'all' 放最前，其余按字母排序
+  return Object.entries(map)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, count]) => ({ name, count }));
+}
+
+// 渲染分组筛选按钮 + 按组测试按钮
+function renderGroupFilter() {
+  const groups = getGroups();
+  const container = document.getElementById('groupFilter');
+  if (groups.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'flex';
+  const allCount = vendors.length;
+  let html = `<button class="group-btn ${currentGroup === 'all' ? 'active' : ''}" onclick="filterByGroup('all')">All <span class="count">${allCount}</span></button>`;
+  for (const g of groups) {
+    const active = currentGroup === g.name ? 'active' : '';
+    html += `<button class="group-btn ${active}" onclick="filterByGroup('${escHtml(g.name)}')">${escHtml(g.name)} <span class="count">${g.count}</span></button>`;
+    // 每个分组附带一个"测试此组"按钮
+    html += `<button class="btn btn-sm btn-success" onclick="testGroup('${escHtml(g.name)}')" ${testing ? 'disabled' : ''}>Test</button>`;
+  }
+  container.innerHTML = html;
+}
+
+function filterByGroup(group) {
+  currentGroup = group;
+  renderGroupFilter();
+  renderTable();
+  updateStats();
+}
+
+async function testGroup(group) {
+  const ids = vendors.filter(v => (v.group || 'other') === group).map(v => v.id);
+  if (ids.length === 0) return;
+  await runBatchTest(ids, 'Testing group: ' + group);
+}
+
+async function reloadConfig() {
+  try {
+    const res = await fetch('/api/config/reload', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) {
+      alert('Error: ' + data.error);
+    } else {
+      await loadVendors();
+    }
+  } catch (e) {
+    alert('Failed to reload config: ' + e.message);
+  }
+}
+
+// 通用批量测试：发送请求 + 轮询结果（不依赖 WebSocket）
+async function runBatchTest(ids, label) {
+  if (testing) return;
+  if (ids.length === 0) return;
+  testing = true;
+  updateButtons();
+  showProgress(0, ids.length, label || 'Starting...');
+  document.getElementById('progressText').textContent = label + ' (0/' + ids.length + ')';
+
+  // 获取当前并发数
+  const concurrency = parseInt(document.getElementById('concurrencyInput').value) || 10;
+
+  let completedCount = 0;
+
+  try {
+    // 发送批量测试请求（带并发数）
+    const resp = await fetch('/api/test/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendor_ids: ids, concurrency: concurrency })
+    });
+    if (!resp.ok) {
+      throw new Error('HTTP ' + resp.status);
+    }
+
+    // 轮询 /api/results 直到所有目标供应商都有新结果
+    const pollInterval = 800;
+    const maxWaitMs = (ids.length * 3 * 35 + 60) * 1000;
+    const startTime = Date.now();
+
+    while (completedCount < ids.length && Date.now() - startTime < maxWaitMs) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      try {
+        const r = await fetch('/api/results');
+        const allResults = await r.json();
+        const resultMap = {};
+        allResults.forEach(item => { resultMap[item.vendor_id] = item; });
+
+        // 统计本次测试中已完成的目标供应商数（有结果即算完成）
+        let done = 0;
+        let lastTestedName = '';
+        ids.forEach(id => {
+          const cur = resultMap[id];
+          if (cur && cur.results && cur.results.length > 0) {
+            done++;
+            lastTestedName = cur.vendor_name;
+            results[id] = cur;  // 总是更新，确保失败结果也展示
+          }
+        });
+
+        completedCount = done;
+        renderTable();
+        updateStats();
+        const pct = ids.length > 0 ? Math.round((done / ids.length) * 100) : 0;
+        document.getElementById('progressFill').style.width = pct + '%';
+        document.getElementById('progressText').textContent = label + ' (' + done + '/' + ids.length + ')' + (lastTestedName ? ' - ' + lastTestedName : '');
+      } catch (e) {
+        // 轮询失败，继续重试
+      }
+    }
+  } catch (e) {
+    console.error('Batch test failed:', e);
+  } finally {
+    hideProgress();
+    testing = false;
+    updateButtons();
+    try {
+      const r = await fetch('/api/results');
+      const allResults = await r.json();
+      allResults.forEach(item => { results[item.vendor_id] = item; });
+      renderTable();
+      updateStats();
+    } catch (e) {}
+  }
+}
+
+// 更新服务端默认并发数
+async function updateConcurrency(v) {
+  const n = parseInt(v) || 10;
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ concurrency: n })
+    });
+  } catch (e) {}
+}
+
+// 页面初始化时拉取服务端默认并发数
+async function loadSettings() {
+  try {
+    const r = await fetch('/api/settings');
+    const s = await r.json();
+    if (s.concurrency) document.getElementById('concurrencyInput').value = s.concurrency;
+  } catch (e) {}
+}
+
+async function testAll() {
+  // 只测试当前可见分组的全部
+  const ids = vendors.filter(v => currentGroup === 'all' || (v.group || 'other') === currentGroup).map(v => v.id);
+  await runBatchTest(ids, 'Testing all visible...');
+}
+
+async function testSelected() {
+  const selected = vendors.filter(v => v._selected).map(v => v.id);
+  if (selected.length === 0) return;
+  await runBatchTest(selected, 'Testing selected...');
+}
+
+async function testSingle(vendorId) {
+  // 单个测试不受全局 testing 状态限制
+  const escVid = CSS.escape(vendorId);
+  const row = document.querySelector(`[data-vendor="${escVid}"]`);
+  if (row) {
+    const statusCell = row.querySelector('.status-cell');
+    if (statusCell) statusCell.innerHTML = '<span class="badge badge-testing">测试中(Testing)...</span>';
+  }
+  try {
+    const res = await fetch('/api/test/single', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendor_id: vendorId })
+    });
+    const report = await res.json();
+    results[vendorId] = report;
+    renderTable();
+    updateStats();
+  } catch (e) {
+    console.error('Test failed:', e);
+    if (row) {
+      const statusCell = row.querySelector('.status-cell');
+      if (statusCell) statusCell.innerHTML = '<span class="badge badge-error">错误(Error)</span>';
+    }
+  }
+}
+
+async function runCustomTest() {
+  const endpoint = document.getElementById('customEndpoint').value.trim();
+  const apiKey = document.getElementById('customApiKey').value.trim();
+  const model = document.getElementById('customModel').value.trim();
+  const format = document.getElementById('customFormat').value;
+  const repeat = parseInt(document.getElementById('customRepeat').value) || 3;
+
+  if (!endpoint || !apiKey || !model) {
+    alert('Please fill in all fields');
+    return;
+  }
+
+  hideCustomModal();
+  showProgress(0, 1, 'Testing custom endpoint...');
+
+  try {
+    const res = await fetch('/api/test/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint, api_key: apiKey, model, api_format: format, repeat })
+    });
+    const report = await res.json();
+    results['custom'] = report;
+    renderTable();
+    updateStats();
+  } catch (e) {
+    console.error('Custom test failed:', e);
+  }
+  hideProgress();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('vendorBody');
+  // 先按分组筛选
+  const filtered = vendors.filter(v => currentGroup === 'all' || (v.group || 'other') === currentGroup);
+  const sorted = [...filtered].sort((a, b) => {
+    const ra = results[a.id];
+    const rb = results[b.id];
+    let va, vb;
+    switch (sortField) {
+      case 'name': va = a.name; vb = b.name; break;
+      case 'group': va = a.group || 'other'; vb = b.group || 'other'; break;
+      case 'endpoint': va = a.endpoint; vb = b.endpoint; break;
+      case 'model': va = a.model || ''; vb = b.model || ''; break;
+      case 'format': va = a.api_format; vb = b.api_format; break;
+      case 'ttfb': va = ra?.ttfb_avg_ms ?? Infinity; vb = rb?.ttfb_avg_ms ?? Infinity; break;
+      case 'ttfb_min': va = ra?.ttfb_min_ms ?? Infinity; vb = rb?.ttfb_min_ms ?? Infinity; break;
+      case 'ttfb_max': va = ra?.ttfb_max_ms ?? Infinity; vb = rb?.ttfb_max_ms ?? Infinity; break;
+      case 'total': va = ra?.total_avg_ms ?? Infinity; vb = rb?.total_avg_ms ?? Infinity; break;
+      case 'total_min': va = ra?.total_min_ms ?? Infinity; vb = rb?.total_min_ms ?? Infinity; break;
+      case 'total_max': va = ra?.total_max_ms ?? Infinity; vb = rb?.total_max_ms ?? Infinity; break;
+      default: va = 0; vb = 0;
+    }
+    if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortAsc ? va - vb : vb - va;
+  });
+
+  // 延迟颜色辅助：<2000ms 绿色，2000-4000ms 黄色，>4000ms 红色
+  const cls = v => v == null ? '' : (v < 2000 ? 'latency-fast' : v <= 4000 ? 'latency-medium' : 'latency-slow');
+  const ms = (v, c) => v != null ? `<span class="${c}">${v}ms</span>` : '-';
+
+  tbody.innerHTML = sorted.map(v => {
+    const r = results[v.id];
+    const status = !r ? '<span class="badge" style="color:#666">未测(Pending)</span>'
+      : r.fail_count > 0 && r.success_count === 0 ? '<span class="badge badge-error">失败(Failed)</span>'
+      : r.fail_count > 0 ? `<span class="badge badge-warning">${r.success_count}/${r.success_count + r.fail_count}</span>`
+      : '<span class="badge badge-success">成功(OK)</span>';
+
+    // 用 data 属性存储 id，通过事件委托调用，避免 id 含特殊字符导致 onclick 失效
+    const vid = escAttr(v.id);
+    return `<tr data-vendor="${vid}">
+      <td class="col-sticky-left" style="width:40px"><input type="checkbox" class="checkbox" ${v._selected ? 'checked' : ''} onchange="toggleSelect('${vid}', this.checked)"></td>
+      <td class="col-sticky-left"><strong>${escHtml(v.name)}</strong></td>
+      <td><span class="badge" style="background:rgba(67,97,238,0.15);color:#4361ee">${escHtml(v.group || 'other')}</span></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(v.endpoint)}">${escHtml(v.endpoint)}</td>
+      <td>${escHtml(v.model || '-')}</td>
+      <td>${v.api_format}</td>
+      <td>${ms(r?.ttfb_avg_ms, cls(r?.ttfb_avg_ms))}</td>
+      <td>${ms(r?.ttfb_min_ms, cls(r?.ttfb_min_ms))}</td>
+      <td>${ms(r?.ttfb_max_ms, cls(r?.ttfb_max_ms))}</td>
+      <td>${ms(r?.total_avg_ms, cls(r?.total_avg_ms))}</td>
+      <td>${ms(r?.total_min_ms, cls(r?.total_min_ms))}</td>
+      <td>${ms(r?.total_max_ms, cls(r?.total_max_ms))}</td>
+      <td class="col-sticky-status status-cell">${status}</td>
+      <td class="col-sticky-action" style="white-space:nowrap">
+        <button class="btn btn-sm btn-primary act-test" data-vid="${vid}" ${testing ? 'disabled' : ''}>测试(Test)</button>
+        <button class="btn btn-sm btn-secondary act-detail" data-vid="${vid}">详情(Detail)</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('emptyState').style.display = vendors.length ? 'none' : 'block';
+}
+
+// HTML 属性转义（用于 data-* 和 onclick 字符串内的 id）
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function updateStats() {
+  const visible = vendors.filter(v => currentGroup === 'all' || (v.group || 'other') === currentGroup);
+  const total = visible.length;
+  const tested = visible.filter(v => results[v.id]).length;
+  const failed = visible.filter(v => results[v.id] && results[v.id].fail_count > 0 && results[v.id].success_count === 0).length;
+  const ttfbs = visible.map(v => results[v.id]).filter(r => r && r.ttfb_avg_ms != null).map(r => r.ttfb_avg_ms);
+  const avgTtfb = ttfbs.length ? Math.round(ttfbs.reduce((a, b) => a + b, 0) / ttfbs.length) : null;
+
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statTested').textContent = tested;
+  document.getElementById('statFailed').textContent = failed;
+  document.getElementById('statTtfb').textContent = avgTtfb != null ? avgTtfb + 'ms' : '-';
+}
+
+function sortTable(field) {
+  if (sortField === field) {
+    sortAsc = !sortAsc;
+  } else {
+    sortField = field;
+    sortAsc = true;
+  }
+  document.querySelectorAll('th').forEach(th => th.classList.remove('sorted'));
+  event.target.classList.add('sorted');
+  renderTable();
+}
+
+function toggleSelect(id, checked) {
+  const v = vendors.find(v => v.id === id);
+  if (v) v._selected = checked;
+  updateSelectedButton();
+}
+
+function toggleSelectAll() {
+  const checked = document.getElementById('selectAll').checked;
+  // 只勾选/取消当前可见分组
+  vendors.forEach(v => {
+    if (currentGroup === 'all' || (v.group || 'other') === currentGroup) {
+      v._selected = checked;
+    }
+  });
+  renderTable();
+  updateSelectedButton();
+}
+
+function updateSelectedButton() {
+  const count = vendors.filter(v => v._selected).length;
+  const btn = document.getElementById('btnTestSelected');
+  btn.style.display = count > 0 ? 'inline-flex' : 'none';
+  btn.textContent = `Test Selected (${count})`;
+}
+
+function updateButtons() {
+  document.getElementById('btnTestAll').disabled = testing;
+  document.getElementById('btnTestSelected').disabled = testing;
+}
+
+function showProgress(current, total, vendor) {
+  const bar = document.getElementById('progressBar');
+  bar.classList.add('active');
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `Testing ${vendor} (${current}/${total})`;
+}
+
+function hideProgress() {
+  document.getElementById('progressBar').classList.remove('active');
+}
+
+function showCustomModal() {
+  document.getElementById('customModal').classList.add('active');
+}
+
+function hideCustomModal() {
+  document.getElementById('customModal').classList.remove('active');
+}
+
+// ===== 数据库选择对话框 =====
+function showDbModal() {
+  // 先加载当前 db 路径
+  fetch('/api/config/db').then(r => r.json()).then(d => {
+    document.getElementById('currentDbPath').textContent = d.db_path || '(未配置)';
+    document.getElementById('dbPathInput').value = d.db_path || '';
+  }).catch(() => {});
+  document.getElementById('dbMessage').textContent = '';
+  document.getElementById('dbModal').classList.add('active');
+}
+
+function hideDbModal() {
+  document.getElementById('dbModal').classList.remove('active');
+}
+
+// 浏览器选了文件 - 尝试获取路径（部分浏览器可，否则只取文件名）
+function onDbFileSelected(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  // 浏览器安全限制：file.path 仅在 Electron 可用；webkitRelativePath 可能为空
+  // 优先用 file.name 作为提示，用户可手工修改
+  const path = file.path || file.name;
+  document.getElementById('dbPathInput').value = path;
+  document.getElementById('dbMessage').textContent =
+    '已选择文件 "' + file.name + '"，请确认路径完整后点击"加载(Load)"。若要上传文件内容，请点击下方"上传(Upload)"按钮。';
+  // 保存 file 引用便于上传
+  window._selectedDbFile = file;
+}
+
+// 方式 1：通过完整路径加载（服务器可访问的文件路径）
+async function loadDbFromInput() {
+  const path = document.getElementById('dbPathInput').value.trim();
+  if (!path) {
+    document.getElementById('dbMessage').innerHTML = '<span style="color:#ff3d71">请输入或选择数据库路径</span>';
+    return;
+  }
+  document.getElementById('dbMessage').innerHTML = '<span style="color:#aaa">加载中...</span>';
+  try {
+    const res = await fetch('/api/config/db', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ db_path: path })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('dbMessage').innerHTML = '<span style="color:#2dd4bf">' + data.message + '</span>';
+      await loadVendors();
+      setTimeout(hideDbModal, 1200);
+    } else {
+      // 路径方式失败（很可能是浏览器只提供了文件名），提示用上传方式
+      document.getElementById('dbMessage').innerHTML =
+        '<span style="color:#ff3d71">路径加载失败：' + (data.error || '未知错误') + '</span><br>' +
+        '<span style="color:#888">提示：浏览器无法获取本地文件完整路径，请改用"上传(Upload)"方式。</span>';
+    }
+  } catch (e) {
+    document.getElementById('dbMessage').innerHTML = '<span style="color:#ff3d71">' + e.message + '</span>';
+  }
+}
+
+// 方式 2：上传文件内容（浏览器安全可靠的方案）
+async function uploadDb() {
+  const file = window._selectedDbFile;
+  if (!file) {
+    document.getElementById('dbMessage').innerHTML = '<span style="color:#ff3d71">请先点击"浏览(Browse)"选择文件</span>';
+    return;
+  }
+  document.getElementById('dbMessage').innerHTML = '<span style="color:#aaa">上传中 (' + Math.round(file.size / 1024) + ' KB)...</span>';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/config/db/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('dbMessage').innerHTML = '<span style="color:#2dd4bf">' + data.message + '</span>';
+      document.getElementById('currentDbPath').textContent = data.db_path || '-';
+      await loadVendors();
+      setTimeout(hideDbModal, 1200);
+    } else {
+      document.getElementById('dbMessage').innerHTML = '<span style="color:#ff3d71">' + (data.error || '上传失败') + '</span>';
+    }
+  } catch (e) {
+    document.getElementById('dbMessage').innerHTML = '<span style="color:#ff3d71">' + e.message + '</span>';
+  }
+}
+
+function hideDetailModal() {
+  document.getElementById('detailModal').classList.remove('active');
+}
+
+// 显示测试详情
+function showDetail(vendorId) {
+  const v = vendors.find(x => x.id === vendorId);
+  const r = results[vendorId];
+  if (!v) return;
+
+  document.getElementById('detailTitle').textContent =
+    `测试详情 - ${v.name} (Test Details)`;
+
+  const content = document.getElementById('detailContent');
+
+  if (!r) {
+    content.innerHTML = '<p style="color:#888;text-align:center;padding:20px">暂无测试结果(No results yet)</p>';
+    document.getElementById('detailModal').classList.add('active');
+    return;
+  }
+
+  // 基本信息
+  const totalReq = r.success_count + r.fail_count;
+  const successRate = totalReq > 0 ? Math.round(r.success_count / totalReq * 100) : 0;
+
+  let html = '';
+  html += '<div class="detail-section">';
+  html += '<h4>基本信息(Overview)</h4>';
+  html += '<div class="detail-stats">';
+  html += `<div class="detail-stat"><div class="k">端点(Endpoint)</div><div class="v" style="font-size:12px;word-break:break-all">${escHtml(r.endpoint)}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">模型(Model)</div><div class="v" style="font-size:13px">${escHtml(r.model || '-')}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">格式(API Format)</div><div class="v" style="font-size:13px">${r.api_format}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">分组(Group)</div><div class="v" style="font-size:13px">${escHtml(r.group || 'other')}</div></div>`;
+  html += '</div>';
+  html += '<div class="detail-stats">';
+  html += `<div class="detail-stat"><div class="k">总请求(Total Requests)</div><div class="v">${totalReq}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">成功(Success)</div><div class="v" style="color:#2dd4bf">${r.success_count}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">失败(Failed)</div><div class="v" style="color:#ff3d71">${r.fail_count}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">成功率(Success Rate)</div><div class="v">${successRate}%</div></div>`;
+  html += '</div>';
+  html += '</div>';
+
+  // 汇总指标
+  html += '<div class="detail-section">';
+  html += '<h4>延迟指标(Latency Metrics)</h4>';
+  html += '<div class="detail-stats">';
+  html += `<div class="detail-stat"><div class="k">TTFB 平均(avg)</div><div class="v">${r.ttfb_avg_ms != null ? r.ttfb_avg_ms + 'ms' : '-'}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">TTFB 最小(min)</div><div class="v">${r.ttfb_min_ms != null ? r.ttfb_min_ms + 'ms' : '-'}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">TTFB 最大(max)</div><div class="v">${r.ttfb_max_ms != null ? r.ttfb_max_ms + 'ms' : '-'}</div></div>`;
+  html += '</div>';
+  html += '<div class="detail-stats">';
+  html += `<div class="detail-stat"><div class="k">总耗时 平均(avg)</div><div class="v">${r.total_avg_ms != null ? r.total_avg_ms + 'ms' : '-'}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">总耗时 最小(min)</div><div class="v">${r.total_min_ms != null ? r.total_min_ms + 'ms' : '-'}</div></div>`;
+  html += `<div class="detail-stat"><div class="k">总耗时 最大(max)</div><div class="v">${r.total_max_ms != null ? r.total_max_ms + 'ms' : '-'}</div></div>`;
+  html += '</div>';
+  html += '</div>';
+
+  // 每次请求详情
+  if (r.results && r.results.length > 0) {
+    html += '<div class="detail-section">';
+    html += '<h4>每次请求详情(Per-Request Details)</h4>';
+    html += '<table class="detail-attempts">';
+    html += '<thead><tr><th>#</th><th>状态(Status)</th><th>HTTP</th><th>TTFB</th><th>总耗时(Total)</th><th>错误(Error)</th></tr></thead><tbody>';
+    r.results.forEach((item, i) => {
+      const st = item.success ? '<span style="color:#2dd4bf">成功(Success)</span>' : '<span style="color:#ff3d71">失败(Fail)</span>';
+      const ttfb = item.ttfb_ms != null ? item.ttfb_ms + 'ms' : '-';
+      const total = item.total_ms != null ? item.total_ms + 'ms' : '-';
+      const http = item.status_code != null ? item.status_code : '-';
+      const err = item.error ? `<div class="detail-error">${escHtml(item.error)}</div>` : '-';
+      html += `<tr><td>${i + 1}</td><td>${st}</td><td>${http}</td><td>${ttfb}</td><td>${total}</td><td>${err}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    html += '</div>';
+  }
+
+  content.innerHTML = html;
+  document.getElementById('detailModal').classList.add('active');
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Close modal on overlay click
+document.getElementById('customModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) hideCustomModal();
+});
+</script>
+</body>
+</html>

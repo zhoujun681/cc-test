@@ -1,0 +1,20 @@
+[package]
+name = "cc-test2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["stream", "json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+clap = { version = "4", features = ["derive"] }
+comfy-table = "7"
+futures-util = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+axum = { version = "0.7", features = ["ws", "multipart"] }
+rust-embed = "8"
+open = "5"
+tower-http = { version = "0.5", features = ["cors"] }
