@@ -2,7 +2,7 @@
 
 cc-switch加多了中转，可用性需要一个一个测试很不方便。于是用AI写了这个简单工具，暂时只支持claude code、codex和opencode的设置，其余的需要实现和其他功能各位自己拉取让AI跑哈。
 下面是AI帮写的^-^。
-![image](https://github.com/zhoujun681/cc-test/blob/main/Images/%E6%88%AA%E5%9B%BE.jpg)
+
 一个用于批量测试 CC Switch 中配置的各类 AI API 供应商（Claude / Codex / OpenAI / OpenCode 等）延迟与可用性的工具。支持终端命令行测试和 Web 可视化界面，自动读取 CC Switch 数据库，按供应商分组，统计 TTFB（首字节时间）和总耗时，实时展示测试进度与每次请求详情。
 
 <br />

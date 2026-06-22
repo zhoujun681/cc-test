@@ -87,14 +87,17 @@ pub fn load_vendors(db_path: &str) -> Result<Vec<Vendor>, String> {
     let mut vendors = Vec::new();
     let mut skipped = Vec::new();
 
-    // 查询 providers 和 provider_endpoints 的关联数据
+    // 新版本 CC Switch：providers 表本身有 app_type 列，meta 列含 apiFormat
+    // 旧版本：app_type 在 provider_endpoints 表
+    // 兼容两种：优先 providers.app_type，回退 provider_endpoints.app_type
     let query = r#"
         SELECT 
             p.id,
+            p.app_type,
             p.name,
             p.settings_config,
-            pe.url as endpoint_url,
-            pe.app_type
+            p.meta,
+            pe.url as endpoint_url
         FROM providers p
         LEFT JOIN provider_endpoints pe ON p.id = pe.provider_id
         WHERE p.settings_config IS NOT NULL
@@ -105,21 +108,28 @@ pub fn load_vendors(db_path: &str) -> Result<Vec<Vendor>, String> {
     let rows = stmt
         .query_map([], |row| {
             Ok((
-                row.get::<_, String>(0)?,  // id
-                row.get::<_, String>(1)?,  // name
-                row.get::<_, String>(2)?,  // settings_config
-                row.get::<_, Option<String>>(3)?,  // endpoint_url
-                row.get::<_, Option<String>>(4)?,  // app_type
+                row.get::<_, String>(0)?,                   // id
+                row.get::<_, Option<String>>(1)?,           // p.app_type (新版本)
+                row.get::<_, String>(2)?,                   // name
+                row.get::<_, String>(3)?,                   // settings_config
+                row.get::<_, Option<String>>(4)?,           // meta
+                row.get::<_, Option<String>>(5)?,           // endpoint_url
             ))
         })
         .map_err(|e| format!("Failed to query: {}", e))?;
 
+    // 用 seen 集合去重（LEFT JOIN 可能导致同一 provider 多行）
+    let mut seen = std::collections::HashSet::new();
     for row in rows {
-        let (id, name, settings_json, endpoint_url, app_type) =
+        let (id, p_app_type, name, settings_json, meta, endpoint_url) =
             row.map_err(|e| format!("Failed to read row: {}", e))?;
 
+        if !seen.insert(id.clone()) {
+            continue; // 已处理过该 provider（多 endpoint 场景取第一个）
+        }
+
         // 解析配置 JSON
-        match parse_vendor_config(&id, &name, &settings_json, endpoint_url, app_type) {
+        match parse_vendor_config(&id, &name, &settings_json, endpoint_url, p_app_type, meta) {
             Ok(vendor) => {
                 vendors.push(vendor);
             }
@@ -252,9 +262,22 @@ fn parse_vendor_config(
     config_json: &str,
     endpoint_url: Option<String>,
     app_type: Option<String>,
+    meta_json: Option<String>,
 ) -> Result<Vendor, String> {
     let config: serde_json::Value =
         serde_json::from_str(config_json).map_err(|e| format!("Invalid JSON: {}", e))?;
+
+    // 解析 meta 字段（新版 CC Switch 存放 apiFormat 等）
+    let meta = meta_json
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.as_object().cloned());
+
+    // 从 meta.apiFormat 提取格式提示（新版本最准确的格式来源）
+    let meta_api_format = meta
+        .as_ref()
+        .and_then(|m| m.get("apiFormat"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_lowercase());
 
     // 提取环境变量 - 检查 env / auth / options 三个常见位置
     let env = config.get("env").and_then(|v| v.as_object());
@@ -343,8 +366,17 @@ fn parse_vendor_config(
         None
     });
 
-    // 检测 API 格式 - 优先级：app_type > TOML wire_api > opencode 格式识别 > env 字段推断 > 默认 Anthropic
-    let api_format = if let Some(app) = &app_type {
+    // 检测 API 格式 - 优先级：meta.apiFormat > app_type > TOML wire_api > opencode 格式识别 > env 字段推断 > 默认 Anthropic
+    let api_format = if let Some(fmt) = meta_api_format.as_deref() {
+        match fmt {
+            "anthropic" | "claude" => ApiFormat::Anthropic,
+            "chat" | "openai" | "openai_chat" | "openaichat" => ApiFormat::OpenaiChat,
+            "responses" | "openai_responses" | "openairesponses" | "gemini" | "google" => {
+                ApiFormat::OpenaiResponses
+            }
+            _ => ApiFormat::Anthropic,
+        }
+    } else if let Some(app) = &app_type {
         match app.to_lowercase().as_str() {
             "claude" | "anthropic" | "claude-desktop" => ApiFormat::Anthropic,
             "openai" | "gpt" | "opencode" => ApiFormat::OpenaiChat,
