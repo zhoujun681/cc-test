@@ -308,6 +308,7 @@ let sortField = 'ttfb';
 let sortAsc = true;
 let ws = null;
 let testing = false;
+let batchComplete = false;  // WebSocket 收到 complete 信号
 let currentGroup = 'all'; // 当前筛选的分组
 
 // Initialize
@@ -342,7 +343,8 @@ function connectWs() {
       renderTable();
       updateStats();
     } else if (msg.type === 'complete') {
-      // 结果通过轮询获取，这里无需处理
+      // 后端测试全部结束（或超时），通知轮询退出
+      batchComplete = true;
     }
   };
   ws.onclose = () => {
@@ -428,14 +430,13 @@ async function runBatchTest(ids, label) {
   if (testing) return;
   if (ids.length === 0) return;
   testing = true;
+  batchComplete = false;
   updateButtons();
   showProgress(0, ids.length, label || 'Starting...');
   document.getElementById('progressText').textContent = label + ' (0/' + ids.length + ')';
 
   // 获取当前并发数
   const concurrency = parseInt(document.getElementById('concurrencyInput').value) || 10;
-
-  let completedCount = 0;
 
   try {
     // 发送批量测试请求（带并发数）
@@ -448,37 +449,41 @@ async function runBatchTest(ids, label) {
       throw new Error('HTTP ' + resp.status);
     }
 
-    // 轮询 /api/results 直到所有目标供应商都有新结果
-    const pollInterval = 800;
-    const maxWaitMs = (ids.length * 3 * 35 + 60) * 1000;
+    // 轮询 /api/test/status 判断后端是否完成，同时拉取最新结果更新表格
+    const pollInterval = 1000;
     const startTime = Date.now();
+    // 兜底超时（安全上限）
+    const maxWaitMs = (ids.length * 3 * 35 + 120) * 1000;
 
-    while (completedCount < ids.length && Date.now() - startTime < maxWaitMs) {
+    while (Date.now() - startTime < maxWaitMs) {
       await new Promise(r => setTimeout(r, pollInterval));
       try {
+        // 1) 查询后端测试状态
+        const sr = await fetch('/api/test/status');
+        const st = await sr.json();
+
+        // 2) 拉取最新结果更新表格
         const r = await fetch('/api/results');
         const allResults = await r.json();
-        const resultMap = {};
-        allResults.forEach(item => { resultMap[item.vendor_id] = item; });
-
-        // 统计本次测试中已完成的目标供应商数（有结果即算完成）
-        let done = 0;
-        let lastTestedName = '';
-        ids.forEach(id => {
-          const cur = resultMap[id];
-          if (cur && cur.results && cur.results.length > 0) {
-            done++;
-            lastTestedName = cur.vendor_name;
-            results[id] = cur;  // 总是更新，确保失败结果也展示
+        allResults.forEach(item => {
+          if (ids.includes(item.vendor_id)) {
+            results[item.vendor_id] = item;
           }
         });
-
-        completedCount = done;
         renderTable();
         updateStats();
-        const pct = ids.length > 0 ? Math.round((done / ids.length) * 100) : 0;
+
+        // 3) 更新进度（用后端权威的 done/total）
+        const done = st.done || 0;
+        const t = st.total || ids.length;
+        const pct = t > 0 ? Math.round((done / t) * 100) : 0;
         document.getElementById('progressFill').style.width = pct + '%';
-        document.getElementById('progressText').textContent = label + ' (' + done + '/' + ids.length + ')' + (lastTestedName ? ' - ' + lastTestedName : '');
+        document.getElementById('progressText').textContent = label + ' (' + done + '/' + t + ')';
+
+        // 4) 后端标记 running=false 即测试结束（正常完成或超时），退出轮询
+        if (!st.running) {
+          break;
+        }
       } catch (e) {
         // 轮询失败，继续重试
       }
@@ -488,6 +493,7 @@ async function runBatchTest(ids, label) {
   } finally {
     hideProgress();
     testing = false;
+    batchComplete = false;
     updateButtons();
     try {
       const r = await fetch('/api/results');

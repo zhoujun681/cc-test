@@ -201,6 +201,12 @@ pub struct AppState {
     pub default_stream: std::sync::atomic::AtomicBool,
     /// 默认并发数
     pub default_concurrency: std::sync::atomic::AtomicUsize,
+    /// 批量测试是否正在进行
+    pub batch_running: std::sync::atomic::AtomicBool,
+    /// 批量测试已完成数
+    pub batch_done: std::sync::atomic::AtomicUsize,
+    /// 批量测试总数
+    pub batch_total: std::sync::atomic::AtomicUsize,
 }
 
 impl AppState {
@@ -214,6 +220,9 @@ impl AppState {
             default_timeout: std::sync::atomic::AtomicU64::new(30),
             default_stream: std::sync::atomic::AtomicBool::new(true),
             default_concurrency: std::sync::atomic::AtomicUsize::new(10),
+            batch_running: std::sync::atomic::AtomicBool::new(false),
+            batch_done: std::sync::atomic::AtomicUsize::new(0),
+            batch_total: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 

@@ -34,6 +34,7 @@ pub async fn start_server(state: Arc<AppState>, port: u16) -> Result<(), String>
         .route("/api/test/single", post(test_single))
         .route("/api/test/batch", post(test_batch))
         .route("/api/test/custom", post(test_custom))
+        .route("/api/test/status", get(get_test_status))
         .route("/api/results", get(get_results))
         .route("/ws", get(ws_handler))
         .layer(cors)
@@ -263,7 +264,19 @@ async fn test_single(
             let repeat = state.get_repeat();
             let timeout = state.get_timeout();
             let stream = state.get_stream();
-            let report = crate::tester::test_vendor(&v, repeat, timeout, stream).await;
+            // 加超时兜底，防止单个测试挂起
+            let single_timeout = std::time::Duration::from_secs(timeout * repeat as u64 + 15);
+            let report = match tokio::time::timeout(
+                single_timeout,
+                crate::tester::test_vendor(&v, repeat, timeout, stream),
+            ).await {
+                Ok(r) => r,
+                Err(_) => {
+                    return (StatusCode::GATEWAY_TIMEOUT, Json(serde_json::json!({
+                        "error": format!("Test timeout ({}s)", timeout * repeat as u64 + 15)
+                    })));
+                }
+            };
             {
                 let mut reports = state.reports.write().await;
                 reports.insert(v.id.clone(), report.clone());
@@ -306,14 +319,22 @@ async fn test_batch(
     let concurrency = req.concurrency.unwrap_or_else(|| state.get_concurrency()).max(1).min(total);
 
     let state_clone = Arc::clone(&state);
+    // 设置批量测试状态
+    state.batch_running.store(true, std::sync::atomic::Ordering::SeqCst);
+    state.batch_done.store(0, std::sync::atomic::Ordering::SeqCst);
+    state.batch_total.store(total, std::sync::atomic::Ordering::SeqCst);
     tokio::spawn(async move {
         let completed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let total_usize = total;
 
-        // 使用 stream 并发处理，每个完成后立即推送结果
+        // 批量任务外层超时兜底（防止个别 vendor 挂起导致整个任务永不结束）
+        let batch_timeout = std::time::Duration::from_secs(
+            (total as u64 * repeat as u64 * (timeout + 5)) / concurrency.max(1) as u64 + 60
+        );
+
         use futures_util::stream::{self, StreamExt};
         let vendors_stream = stream::iter(to_test);
-        vendors_stream
+        let batch_work = vendors_stream
             .for_each_concurrent(concurrency, |vendor| {
                 let state_clone = Arc::clone(&state_clone);
                 let completed = Arc::clone(&completed);
@@ -341,11 +362,17 @@ async fn test_batch(
 
                     // 更新完成计数
                     completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    state_clone.batch_done.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 }
-            })
-            .await;
+            });
 
-        // 全部完成，推送 complete
+        // 无论超时还是正常完成，都继续往下发 Complete（避免前端永久卡死）
+        let _ = tokio::time::timeout(batch_timeout, batch_work).await;
+
+        // 标记批量测试结束
+        state_clone.batch_running.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        // 全部完成（或超时），推送 complete
         let reports = state_clone.reports.read().await;
         let summary = build_summary(&reports);
         let _ = state_clone.broadcast(WsMessage::Complete { summary }).await;
@@ -376,7 +403,19 @@ async fn test_custom(
     let repeat = req.repeat.unwrap_or_else(|| state.get_repeat());
     let timeout = state.get_timeout();
     let stream = state.get_stream();
-    let report = crate::tester::test_vendor(&vendor, repeat, timeout, stream).await;
+    // 加超时兜底，防止单个测试挂起
+    let single_timeout = std::time::Duration::from_secs(timeout * repeat as u64 + 15);
+    let report = match tokio::time::timeout(
+        single_timeout,
+        crate::tester::test_vendor(&vendor, repeat, timeout, stream),
+    ).await {
+        Ok(r) => r,
+        Err(_) => {
+            return (StatusCode::GATEWAY_TIMEOUT, Json(serde_json::json!({
+                "error": format!("Test timeout ({}s)", timeout * repeat as u64 + 15)
+            })));
+        }
+    };
 
     {
         let mut reports = state.reports.write().await;
@@ -388,6 +427,17 @@ async fn test_custom(
     }).await;
 
     (StatusCode::OK, Json(serde_json::json!(report)))
+}
+
+async fn get_test_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let running = state.batch_running.load(std::sync::atomic::Ordering::SeqCst);
+    let done = state.batch_done.load(std::sync::atomic::Ordering::SeqCst);
+    let total = state.batch_total.load(std::sync::atomic::Ordering::SeqCst);
+    Json(serde_json::json!({
+        "running": running,
+        "done": done,
+        "total": total,
+    }))
 }
 
 async fn get_results(State(state): State<Arc<AppState>>) -> impl IntoResponse {

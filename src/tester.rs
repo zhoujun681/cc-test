@@ -23,10 +23,22 @@ pub async fn test_vendor(
 
 /// 发送单次测试请求
 async fn test_single_request(vendor: &Vendor, timeout: u64, stream: bool) -> TestResult {
-    let client = Client::builder()
+    let client = match Client::builder()
         .timeout(Duration::from_secs(timeout))
+        .connect_timeout(Duration::from_secs(10))
         .build()
-        .unwrap();
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return TestResult {
+                ttfb_ms: None,
+                total_ms: None,
+                success: false,
+                error: Some(format!("Failed to build HTTP client: {}", e)),
+                status_code: None,
+            };
+        }
+    };
 
     let start = Instant::now();
     let ttfb;
@@ -82,28 +94,58 @@ async fn test_single_request(vendor: &Vendor, timeout: u64, stream: bool) -> Tes
         };
     }
 
-    // 流式读取响应
+    // 流式读取响应（加内层超时兜底，防止慢滴流导致无限挂起）
     if stream {
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(_) => {
-                    // 继续读取直到完成
+        let read_timeout = Duration::from_secs(timeout + 5);
+        let read_result = tokio::time::timeout(read_timeout, async {
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(_) => {}
+                    Err(e) => return Err(format!("Stream error: {}", e)),
                 }
-                Err(e) => {
-                    return TestResult {
-                        ttfb_ms: Some(ttfb),
-                        total_ms: Some(start.elapsed().as_millis() as u64),
-                        success: false,
-                        error: Some(format!("Stream error: {}", e)),
-                        status_code: Some(status),
-                    };
-                }
+            }
+            Ok::<(), String>(())
+        })
+        .await;
+
+        match read_result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                return TestResult {
+                    ttfb_ms: Some(ttfb),
+                    total_ms: Some(start.elapsed().as_millis() as u64),
+                    success: false,
+                    error: Some(e),
+                    status_code: Some(status),
+                };
+            }
+            Err(_) => {
+                return TestResult {
+                    ttfb_ms: Some(ttfb),
+                    total_ms: Some(start.elapsed().as_millis() as u64),
+                    success: false,
+                    error: Some(format!("Stream read timeout ({}s)", timeout + 5)),
+                    status_code: Some(status),
+                };
             }
         }
     } else {
-        // 非流式，读取完整响应
-        let _ = response.text().await;
+        // 非流式，读取完整响应（同样加超时兜底）
+        let read_timeout = Duration::from_secs(timeout + 5);
+        let read_result = tokio::time::timeout(read_timeout, response.text()).await;
+        match read_result {
+            Ok(_) => {}
+            Err(_) => {
+                return TestResult {
+                    ttfb_ms: Some(ttfb),
+                    total_ms: Some(start.elapsed().as_millis() as u64),
+                    success: false,
+                    error: Some(format!("Response read timeout ({}s)", timeout + 5)),
+                    status_code: Some(status),
+                };
+            }
+        }
     }
 
     let total = start.elapsed().as_millis() as u64;
